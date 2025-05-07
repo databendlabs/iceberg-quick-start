@@ -14,8 +14,8 @@ services:
       - ./notebooks:/home/iceberg/notebooks/notebooks
       - ./data:/home/iceberg/data
       - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      - ./load_tpch.py:/home/iceberg/load_tpch.py
       - ./load_tpch.sh:/home/iceberg/load_tpch.sh
-      - ./install_duckdb.sh:/home/iceberg/install_duckdb.sh
     environment:
       - AWS_ACCESS_KEY_ID=admin
       - AWS_SECRET_ACCESS_KEY=password
