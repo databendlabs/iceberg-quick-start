@@ -12,9 +12,10 @@ main () {
     VER=1.2.2
     eval PREFIX="~/.duckdb/cli"
     INST="${PREFIX}/${VER}"
+    rm -rf $INST
+
     LATEST="${PREFIX}/latest"
 
-    rm -rf $INST
     rm -rf $LATEST
 
     DIST=
