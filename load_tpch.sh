@@ -29,6 +29,7 @@ ensure_command() {
 }
 
 DUCKDB_INSTALL_DIR="/root/.duckdb/cli/latest"
+DUCKDB_INSTALL_VERSION_DIR="/root/.duckdb/cli/1.2.2"
 
 # Validate and set configuration
 configure_environment() {
@@ -47,6 +48,9 @@ configure_environment() {
     if [[ ! -x "$DUCKDB_INSTALL_DIR/duckdb" ]]; then
         log "DuckDB not found, installing..." "WARN"
         curl https://install.duckdb.org | sh
+        if [[ ! -x "$DUCKDB_INSTALL_DIR/duckdb" ]]; then
+            mv $DUCKDB_INSTALL_VERSION_DIR $DUCKDB_INSTALL_DIR
+        fi
     fi
 }
 
