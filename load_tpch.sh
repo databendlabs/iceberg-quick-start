@@ -46,7 +46,7 @@ configure_environment() {
     # Ensure DuckDB is installed and PATH is set
     if [[ ! -x "$DUCKDB_INSTALL_DIR/duckdb" ]]; then
         log "DuckDB not found, installing..." "WARN"
-        bash /home/iceberg/install_duckdb.sh
+        curl https://install.duckdb.org | sh
     fi
 }
 
