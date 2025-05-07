@@ -13,6 +13,21 @@ error_exit() {
     exit "${2:-1}"
 }
 
+# Check and install required commands
+ensure_command() {
+    local cmd="$1"
+    local install_cmd="${2:-}"
+
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        log "$cmd not found, attempting to install..." "WARN"
+        if [[ -n "$install_cmd" ]]; then
+            eval "$install_cmd" || error_exit "Failed to install $cmd"
+        else
+            error_exit "Command $cmd not found and no installation method provided"
+        fi
+    fi
+}
+
 DUCKDB_INSTALL_DIR="/root/.duckdb/cli/latest"
 DUCKDB_INSTALL_VERSION_DIR="/root/.duckdb/cli/1.2.2"
 
@@ -42,7 +57,7 @@ configure_environment() {
 # Generate TPCH data using DuckDB
 generate_tpch_data() {
     log "Generating TPCH data with DuckDB (Scale Factor: $SCALE_FACTOR)"
-    "$DUCKDB_INSTALL_DIR/duckdb" << EOF || error_exit "DuckDB data generation failed"
+    $DUCKDB_INSTALL_DIR/duckdb << EOF || error_exit "DuckDB data generation failed"
 install tpch;
 load tpch;
 CALL dbgen(sf = $SCALE_FACTOR);
@@ -58,6 +73,8 @@ EOF
 
 # Load data into Iceberg catalog using Spark
 load_to_iceberg() {
+    ensure_command "spark-shell"
+
     log "Loading data into Iceberg catalog"
     spark-shell --driver-memory "$SPARK_MEMORY" << EOF
 import org.apache.spark.sql.SaveMode
@@ -72,18 +89,18 @@ files.foreach { file =>
   val tableName = file.getName.stripSuffix(".parquet")
   val df = spark.read.parquet(file.getAbsolutePath)
 
-  val fullyQualifiedTableName = s"demo.tpch.$tableName"
+  val fullyQualifiedTableName = s"demo.tpch.\$tableName"
 
   df.createOrReplaceTempView(tableName)
 
   spark.sql(s"""
-    CREATE TABLE IF NOT EXISTS $fullyQualifiedTableName
+    CREATE TABLE IF NOT EXISTS \$fullyQualifiedTableName
     USING iceberg
-    LOCATION '$icebergWarehouse/tpch/$tableName'
-    AS SELECT * FROM $tableName
+    LOCATION '\$icebergWarehouse/tpch/\$tableName'
+    AS SELECT * FROM \$tableName
   """)
 
-  println(s"Created table $fullyQualifiedTableName from ${file.getName}")
+  println(s"Created table \$fullyQualifiedTableName from \${file.getName}")
 }
 
 spark.sql("SHOW TABLES IN demo.tpch").show()
