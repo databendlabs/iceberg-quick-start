@@ -41,8 +41,14 @@ main() {
 
     # Generate TPCH data using DuckDB
     log "Generating TPCH data with DuckDB"
-    curl https://install.duckdb.org | sh
-    /root/.duckdb/cli/latest/duckdb << EOF || error_exit "DuckDB data generation failed"
+    if ! command -v duckdb >/dev/null 2>&1; then
+        log "DuckDB not found, installing..."
+        curl https://install.duckdb.org | sh
+        export PATH='/root/.duckdb/cli/latest':$PATH
+    else
+        log "DuckDB already installed, skipping..."
+    fi
+    duckdb << EOF || error_exit "DuckDB data generation failed"
 install tpch;
 load tpch;
 CALL dbgen(sf = $SCALE_FACTOR);
