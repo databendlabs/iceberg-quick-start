@@ -14,6 +14,9 @@ main () {
     INST="${PREFIX}/${VER}"
     LATEST="${PREFIX}/latest"
 
+    rm -rf $INST
+    rm -rf $LATEST
+
     DIST=
 
     if [ "${OS}" = "Linux" ]

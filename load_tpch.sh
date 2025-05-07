@@ -28,6 +28,8 @@ ensure_command() {
     fi
 }
 
+DUCKDB_INSTALL_DIR="/root/.duckdb/cli/latest"
+
 # Validate and set configuration
 configure_environment() {
     # Configurable parameters with sensible defaults
@@ -35,7 +37,6 @@ configure_environment() {
     DATA_DIR="${TPCH_DATA_DIR:-/home/iceberg/data/tpch_${SCALE_FACTOR}}"
     ICEBERG_WAREHOUSE="${ICEBERG_WAREHOUSE_PATH:-s3://warehouse}"
     SPARK_MEMORY="${SPARK_DRIVER_MEMORY:-8g}"
-    DUCKDB_INSTALL_DIR="/root/.duckdb/cli/latest"
 
     log "Configuration: Scale Factor=$SCALE_FACTOR, Data Dir=$DATA_DIR"
 
@@ -47,20 +48,12 @@ configure_environment() {
         log "DuckDB not found, installing..." "WARN"
         bash /home/iceberg/install_duckdb.sh
     fi
-
-    # Explicitly add DuckDB to PATH
-    export PATH="$DUCKDB_INSTALL_DIR:$PATH"
 }
 
 # Generate TPCH data using DuckDB
 generate_tpch_data() {
-    # Verify DuckDB is available
-    if ! command -v duckdb >/dev/null 2>&1; then
-        error_exit "DuckDB is not installed or not in PATH"
-    fi
-
     log "Generating TPCH data with DuckDB (Scale Factor: $SCALE_FACTOR)"
-    duckdb << EOF || error_exit "DuckDB data generation failed"
+    $DUCKDB_INSTALL_DIR/duckdb << EOF || error_exit "DuckDB data generation failed"
 install tpch;
 load tpch;
 CALL dbgen(sf = $SCALE_FACTOR);
