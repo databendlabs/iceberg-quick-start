@@ -1,53 +1,52 @@
 #!/bin/bash
+set -euo pipefail
 
-# Enable debugging
-set -x
-
-# Logging function with timestamp
+# Logging function with improved timestamp and log levels
 log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >&2
+    local level="${2:-INFO}"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [$level] $1" >&2
 }
 
-# Error handling function
+# Error handling function with optional exit code
 error_exit() {
-    log "ERROR: $1"
-    exit 1
+    log "$1" "ERROR"
+    exit "${2:-1}"
 }
 
-# Check required commands
-check_commands() {
-    local commands=("spark-shell")
-    for cmd in "${commands[@]}"; do
-        command -v "$cmd" >/dev/null 2>&1 || error_exit "Command not found: $cmd"
-    done
+# Check and install required commands
+ensure_command() {
+    local cmd="$1"
+    local install_cmd="${2:-}"
+
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        log "$cmd not found, attempting to install..." "WARN"
+        if [[ -n "$install_cmd" ]]; then
+            eval "$install_cmd" || error_exit "Failed to install $cmd"
+        else
+            error_exit "Command $cmd not found and no installation method provided"
+        fi
+    fi
 }
 
+# Validate and set configuration
+configure_environment() {
+    # Configurable parameters with sensible defaults
+    SCALE_FACTOR="${TPCH_SCALE_FACTOR:-1}"
+    DATA_DIR="${TPCH_DATA_DIR:-/home/iceberg/data/tpch_${SCALE_FACTOR}}"
+    ICEBERG_WAREHOUSE="${ICEBERG_WAREHOUSE_PATH:-s3://warehouse}"
+    SPARK_MEMORY="${SPARK_DRIVER_MEMORY:-8g}"
 
-# Main script execution
-main() {
-    log "Starting TPCH data generation and loading process"
-
-    # Verify commands and environment
-    check_commands
-
-    # Set the scale factor for TPCH data generation
-    SCALE_FACTOR=1
-    log "Using TPCH scale factor: $SCALE_FACTOR"
+    log "Configuration: Scale Factor=$SCALE_FACTOR, Data Dir=$DATA_DIR"
 
     # Ensure data directory exists
-    DATA_DIR="/home/iceberg/data/tpch_${SCALE_FACTOR}"
-    log "Creating data directory: $DATA_DIR"
     mkdir -p "$DATA_DIR" || error_exit "Failed to create data directory"
+}
 
-    # Generate TPCH data using DuckDB
-    log "Generating TPCH data with DuckDB"
-    if ! command -v duckdb >/dev/null 2>&1; then
-        log "DuckDB not found, installing..."
-        curl https://install.duckdb.org | sh
-        export PATH='/root/.duckdb/cli/latest':$PATH
-    else
-        log "DuckDB already installed, skipping..."
-    fi
+# Generate TPCH data using DuckDB
+generate_tpch_data() {
+    ensure_command "duckdb" "bash /home/iceberg/install_duckdb.sh && export PATH='/root/.duckdb/cli/latest':$PATH"
+
+    log "Generating TPCH data with DuckDB (Scale Factor: $SCALE_FACTOR)"
     duckdb << EOF || error_exit "DuckDB data generation failed"
 install tpch;
 load tpch;
@@ -56,16 +55,22 @@ EXPORT DATABASE '$DATA_DIR' (FORMAT PARQUET);
 EOF
 
     # Verify data generation
-    log "Checking generated data files"
-    [ "$(find "$DATA_DIR" -name "*.parquet" | wc -l)" -eq 0 ] && error_exit "No Parquet files generated"
+    local parquet_count
+    parquet_count=$(find "$DATA_DIR" -name "*.parquet" | wc -l)
+    [[ "$parquet_count" -eq 0 ]] && error_exit "No Parquet files generated"
+    log "Generated $parquet_count Parquet files"
+}
 
-    # Load data into Iceberg catalog using Spark
+# Load data into Iceberg catalog using Spark
+load_to_iceberg() {
+    ensure_command "spark-shell"
+
     log "Loading data into Iceberg catalog"
-    spark-shell --driver-memory 8g << EOF
+    spark-shell --driver-memory "$SPARK_MEMORY" << EOF
 import org.apache.spark.sql.SaveMode
 import java.io.File
 
-val icebergWarehouse = "s3://warehouse"
+val icebergWarehouse = "$ICEBERG_WAREHOUSE"
 val parquetDir = "$DATA_DIR"
 
 val files = new File(parquetDir).listFiles.filter(_.getName.endsWith(".parquet"))
@@ -91,9 +96,18 @@ files.foreach { file =>
 spark.sql("SHOW TABLES IN demo.tpch").show()
 System.exit(0)
 EOF
-
-    log "TPCH data generation and loading completed successfully"
 }
 
-# Execute main function with error trapping
+# Main script execution
+main() {
+    log "Starting TPCH data generation and loading process"
+
+    configure_environment
+    generate_tpch_data
+    load_to_iceberg
+
+    log "TPCH data generation and loading completed successfully" "SUCCESS"
+}
+
+# Execute main function with logging
 main 2>&1 | tee /home/iceberg/load_tpch.log
