@@ -101,7 +101,6 @@ main () {
                          to ${LATEST}/duckdb"
     fi
 
-    echo
     echo "To launch DuckDB now, type"
     echo "${LATEST}/duckdb"
 }
