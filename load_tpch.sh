@@ -76,12 +76,14 @@ load_to_iceberg() {
     ensure_command "spark-shell"
 
     log "Loading data into Iceberg catalog"
-    spark-shell --driver-memory "$SPARK_MEMORY" << EOF
+
+    SPARK_SCRIPT=$(mktemp)
+    cat > "$SPARK_SCRIPT" << 'SPARK_SCRIPT_EOF'
 import org.apache.spark.sql.SaveMode
 import java.io.File
 
-val icebergWarehouse = "$ICEBERG_WAREHOUSE"
-val parquetDir = "$DATA_DIR"
+val icebergWarehouse = sys.env("ICEBERG_WAREHOUSE")
+val parquetDir = sys.env("DATA_DIR")
 
 val files = new File(parquetDir).listFiles.filter(_.getName.endsWith(".parquet"))
 
@@ -89,23 +91,25 @@ files.foreach { file =>
   val tableName = file.getName.stripSuffix(".parquet")
   val df = spark.read.parquet(file.getAbsolutePath)
 
-  val fullyQualifiedTableName = s"demo.tpch.\$tableName"
+  val fullyQualifiedTableName = s"demo.tpch.$tableName"
 
   df.createOrReplaceTempView(tableName)
 
   spark.sql(s"""
-    CREATE TABLE IF NOT EXISTS \$fullyQualifiedTableName
+    CREATE TABLE IF NOT EXISTS $fullyQualifiedTableName
     USING iceberg
-    LOCATION '\$icebergWarehouse/tpch/\$tableName'
-    AS SELECT * FROM \$tableName
+    LOCATION '$icebergWarehouse/tpch/$tableName'
+    AS SELECT * FROM $tableName
   """)
 
-  println(s"Created table \$fullyQualifiedTableName from \${file.getName}")
+  println(s"Created table $fullyQualifiedTableName from ${file.getName}")
 }
 
 spark.sql("SHOW TABLES IN demo.tpch").show()
 System.exit(0)
-EOF
+SPARK_SCRIPT_EOF
+
+    spark-shell --driver-memory "$SPARK_MEMORY" -i "$SPARK_SCRIPT"
 }
 
 # Main script execution
